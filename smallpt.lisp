@@ -205,6 +205,8 @@
 (declaim (ftype (function (sphere ray) (double-float 0.0d0))
                 intersect))
 
+(declaim (inline intersect intersectp))
+
 (defun intersect (s r)
   (declare (optimize (speed 3) (space 0) (debug 0))
            (type sphere s)
@@ -217,6 +219,7 @@
                     (dot op op))
                  (* (sphere-rad s)
                     (sphere-rad s)))))
+    (declare (dynamic-extent op))
     (if (< det 0.0d0)
         0.0d0
         (let* ((det (sqrt det))
@@ -333,6 +336,8 @@
                             (values id ta)
                             (values nil 0.0d0)))))
 
+(declaim (inline mollify))
+
 (defun mollify (l rd n nl dist type molif_r)
   (declare (optimize (speed 3) (space 0) (debug 0))
            (type double-float dist molif_r)
@@ -343,6 +348,7 @@
          (into (> (dot n nl) 0.0d0))
          (out (-v rd (*s n (* 2.0d0
                               (dot n rd))))))
+    (declare (dynamic-extent out))
     (when (eq type :refr)
       (let* ((nc 1.0d0)
              (nt 1.5d0)
@@ -350,9 +356,14 @@
              (ddn (dot rd nl))
              (cos2t (- 1.0d0 (* nnt nnt (- 1.0d0 (* ddn ddn))))))
         (when (> cos2t 0.0d0)
-          (setf out (normv (-v (*s rd nnt)
-                               (*s n (* (if into 1.0d0 -1.0d0)
-                                        (+ (* ddn nnt) (sqrt cos2t))))))))))
+          (let ((outr (normv (-v (*s rd nnt)
+                                 (*s n (* (if into 1.0d0 -1.0d0)
+                                          (+ (* ddn nnt) (sqrt cos2t))))))))
+            (declare (dynamic-extent outr))
+            (if (>= (dot l outr)
+                    cos_max)
+                (/ solid_angle)
+                0.0d0)))))
     (if (>= (dot l out)
             cos_max)
         (/ solid_angle)
@@ -381,7 +392,7 @@
               (f (sphere-col obj))
               (e (vec0))
               (p (max (vec-x f) (vec-y f) (vec-z f))))
-         (declare (dynamic-extent x e))
+         (declare (dynamic-extent x e n))
          (if (and (= p 0.0d0)
                   (>= (random 1.0d0) p))
              (*s (sphere-em obj)
@@ -410,7 +421,7 @@
                                           (*s sv (* (sin phi) sin_a)))
                                       (*s sw cos_a)))))
                    (declare (type double-float cos-a-max cos_a sin_a)
-                            (dynamic-extent sw sv))
+                            (dynamic-extent sw su sv l))
                    (let ((id (intersectp (ray x l)))
                          (stype (sphere-refl obj)))
                      (when (eq id s)
@@ -492,11 +503,11 @@
                      (to-int (vec-y v))
                      (to-int (vec-z v))))))
 
-#+(or)
+
 (defvar *lp-initialized-p* (progn
                              (unless lparallel:*kernel*
                                (setf lparallel:*kernel* 
-                                     (lparallel:make-kernel 2)) )
+                                     (lparallel:make-kernel 4)) )
                              t))
 
 
@@ -514,7 +525,7 @@
       (dotimes (y +ysize+ (write-ppm buffer))
         (format t "Rendering (~s spp) ~,2f~%"
                 spp (float (/ (* 100 y) (1- +ysize+))))
-        (loop for x fixnum below +xsize+ do
+        (lparallel:pdotimes (x +xsize+)
           (loop for sy fixnum below 2
                 with i fixnum = (+ (* (- +ysize+ y 1) +xsize+) x) do
                   (loop for sx fixnum below 2 do
