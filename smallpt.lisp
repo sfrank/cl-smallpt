@@ -516,11 +516,13 @@
                             e)
                         (*v f (radiance (ray x d) depth 0 molif_r)))))
                  (:spec
-                  (+v (sphere-em obj)
-                      (*v f (radiance (ray x (-v (ray-d r)
-                                                 (*s n (* 2.0d0
-                                                          (dot n (ray-d r))))))
-                                      depth 1 molif_r))))
+                  (let* ((spawnv (-v (ray-d r)
+                                     (*s n (* 2.0d0
+                                              (dot n (ray-d r))))))
+                         (spawn (ray x spawnv)))
+                    (declare (dynamic-extent spawn spawnv))
+                    (+v (sphere-em obj)
+                        (*v f (radiance spawn depth 1 molif_r)))))
                  (:refr
                   (let* ((reflray (ray x (-v (ray-d r)
                                              (*s n (* 2.0d0
@@ -546,14 +548,16 @@
                                (Tr (- 1.d0 Re))
                                (Pb (+ 0.25d0 (* 0.5d0 Re)))
                                (RP (/ Re Pb))
-                               (TP (/ Tr (- 1.0d0 Pb))))
+                               (TP (/ Tr (- 1.0d0 Pb)))
+                               (tdirray (ray x tdir)))
+                          (declare (dynamic-extent tdir tdirray))
                           (+v (sphere-em obj)
                               (*v f (if (> depth 2) ; Russian roulette
                                         (if (< (random 1.0d0) Pb)
                                             (*s (radiance reflray depth 1 molif_r) RP)
-                                            (*s (radiance (ray x tdir) depth 1 molif_r) TP))
+                                            (*s (radiance tdirray depth 1 molif_r) TP))
                                         (+v (*s (radiance reflray depth 1 molif_r) Re)
-                                            (*s (radiance (ray x tdir) depth 1 molif_r) Tr)))))))))))))))))
+                                            (*s (radiance tdirray depth 1 molif_r) Tr)))))))))))))))))
 
 (defun write-ppm (buffer &optional (filename "image.ppm"))
   (declare (type (simple-vector #.(* +xsize+ +ysize+)) buffer))
